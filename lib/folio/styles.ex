@@ -11,194 +11,137 @@ defmodule Folio.Styles do
       ])
   """
 
-  defmodule PageSize do
-    @moduledoc "Page dimensions in points. Fields: `width`, `height`."
-    defstruct [:width, :height]
-    @type t :: %__MODULE__{width: float() | nil, height: float() | nil}
-  end
+  use Folio.Declaration, union: :rule
 
-  defmodule PageMargin do
-    @moduledoc "Page margins in points. Fields: `top`, `right`, `bottom`, `left`."
-    defstruct [:top, :right, :bottom, :left]
+  defvariant(PageSize,
+    doc: "Page dimensions in points. Fields: `width`, `height`.",
+    type: %__MODULE__{width: float() | nil, height: float() | nil}
+  )
 
-    @type t :: %__MODULE__{
-            top: float() | nil,
-            right: float() | nil,
-            bottom: float() | nil,
-            left: float() | nil
-          }
-  end
+  defvariant(PageMargin,
+    doc: "Page margins in points. Fields: `top`, `right`, `bottom`, `left`.",
+    type: %__MODULE__{
+      top: float() | nil,
+      right: float() | nil,
+      bottom: float() | nil,
+      left: float() | nil
+    }
+  )
 
-  defmodule FontSize do
-    @moduledoc "Base font size in points. Field: `size`."
-    defstruct [:size]
-    @type t :: %__MODULE__{size: float()}
-  end
+  defvariant(FontSize,
+    doc: "Base font size in points. Field: `size`.",
+    type: %__MODULE__{size: float()}
+  )
 
-  defmodule FontFamily do
-    @moduledoc "Font stack. Field: `families`."
-    defstruct [:families]
-    @type t :: %__MODULE__{families: [String.t()]}
-  end
+  defvariant(FontFamily,
+    doc: "Font stack. Field: `families`.",
+    type: %__MODULE__{families: [String.t()]}
+  )
 
-  defmodule FontWeight do
-    @moduledoc "Font weight (100-900). Field: `weight`."
-    defstruct [:weight]
-    @type t :: %__MODULE__{weight: 100..900}
-  end
+  defvariant(FontWeight,
+    doc: "Font weight (100-900). Field: `weight`.",
+    type: %__MODULE__{weight: 100..900}
+  )
 
-  defmodule TextColor do
-    @moduledoc "Text fill color (hex, named, rgb). Field: `color`."
-    defstruct [:color]
-    @type t :: %__MODULE__{color: String.t()}
-  end
+  defvariant(TextColor,
+    doc: "Text fill color (hex, named, rgb). Field: `color`.",
+    type: %__MODULE__{color: String.t()}
+  )
 
-  defmodule ParJustify do
-    @moduledoc "Enable justified paragraphs. Field: `justify`."
-    defstruct [:justify]
-    @type t :: %__MODULE__{justify: boolean()}
-  end
+  defvariant(ParJustify,
+    doc: "Enable justified paragraphs. Field: `justify`.",
+    type: %__MODULE__{justify: boolean()}
+  )
 
-  defmodule ParIndent do
-    @moduledoc "First-line paragraph indent in points. Fields: `indent`, `all`."
-    defstruct [:indent, :all]
-    @type t :: %__MODULE__{indent: float(), all: boolean() | nil}
-  end
+  defvariant(ParIndent,
+    doc: "First-line paragraph indent in points. Fields: `indent`, `all`.",
+    type: %__MODULE__{indent: float(), all: boolean() | nil}
+  )
 
-  defmodule PageNumbering do
-    @moduledoc """
-    Page number format (e.g. `"1"`, `"i"`). Field: `pattern`.
-    """
-    defstruct [:pattern]
-    @type t :: %__MODULE__{pattern: String.t()}
-  end
+  defvariant(PageNumbering,
+    doc: "Page number format (e.g. `\"1\"`, `\"i\"`). Field: `pattern`.",
+    type: %__MODULE__{pattern: String.t()}
+  )
 
-  defmodule PageHeader do
-    @moduledoc "Page header content. Field: `content`."
-    defstruct [:content]
-    @type t :: %__MODULE__{content: [Folio.Content.t()]}
-  end
+  defvariant(PageHeader,
+    doc: "Page header content. Field: `content`.",
+    type: %__MODULE__{content: [Folio.Content.t()]}
+  )
 
-  defmodule PageFooter do
-    @moduledoc "Page footer content. Field: `content`."
-    defstruct [:content]
-    @type t :: %__MODULE__{content: [Folio.Content.t()]}
-  end
+  defvariant(PageFooter,
+    doc: "Page footer content. Field: `content`.",
+    type: %__MODULE__{content: [Folio.Content.t()]}
+  )
 
-  defmodule HeadingNumbering do
-    @moduledoc """
-    Heading number format (e.g. `"1."`, `"A.1"`). Field: `pattern`.
-    """
-    defstruct [:pattern]
-    @type t :: %__MODULE__{pattern: String.t()}
-  end
+  defvariant(HeadingNumbering,
+    doc: "Heading number format (e.g. `\"1.\"`, `\"A.1\"`). Field: `pattern`.",
+    type: %__MODULE__{pattern: String.t()}
+  )
 
-  defmodule HeadingSupplement do
-    @moduledoc """
-    Heading supplement text (e.g. `"Chapter"`). Field: `content`.
-    """
-    defstruct [:content]
-    @type t :: %__MODULE__{content: [Folio.Content.t()]}
-  end
+  defvariant(HeadingSupplement,
+    doc: "Heading supplement text (e.g. `\"Chapter\"`). Field: `content`.",
+    type: %__MODULE__{content: [Folio.Content.t()]}
+  )
 
-  defmodule HeadingOutlined do
-    @moduledoc "Include heading in outline. Field: `outlined`."
-    defstruct [:outlined]
-    @type t :: %__MODULE__{outlined: boolean()}
-  end
+  defvariant(HeadingOutlined,
+    doc: "Include heading in outline. Field: `outlined`.",
+    type: %__MODULE__{outlined: boolean()}
+  )
 
-  defmodule HeadingBookmarked do
-    @moduledoc "Include heading in PDF bookmarks. Field: `bookmarked`."
-    defstruct [:bookmarked]
-    @type t :: %__MODULE__{bookmarked: boolean()}
-  end
+  defvariant(HeadingBookmarked,
+    doc: "Include heading in PDF bookmarks. Field: `bookmarked`.",
+    type: %__MODULE__{bookmarked: boolean()}
+  )
 
-  defmodule Lang do
-    @moduledoc "Document language (ISO 639-1 code). Field: `lang`."
-    defstruct [:lang]
-    @type t :: %__MODULE__{lang: String.t()}
-  end
+  defvariant(Lang,
+    doc: "Document language (ISO 639-1 code). Field: `lang`.",
+    type: %__MODULE__{lang: String.t()}
+  )
 
-  defmodule Hyphenate do
-    @moduledoc "Enable/disable hyphenation. Field: `hyphenate`."
-    defstruct [:hyphenate]
-    @type t :: %__MODULE__{hyphenate: boolean()}
-  end
+  defvariant(Hyphenate,
+    doc: "Enable/disable hyphenation. Field: `hyphenate`.",
+    type: %__MODULE__{hyphenate: boolean()}
+  )
 
-  defmodule Leading do
-    @moduledoc "Line leading in em units. Field: `leading`."
-    defstruct [:leading]
-    @type t :: %__MODULE__{leading: float()}
-  end
+  defvariant(Leading,
+    doc: "Line leading in em units. Field: `leading`.",
+    type: %__MODULE__{leading: float()}
+  )
 
-  defmodule ParSpacing do
-    @moduledoc "Paragraph spacing in em units. Field: `spacing`."
-    defstruct [:spacing]
-    @type t :: %__MODULE__{spacing: float()}
-  end
+  defvariant(ParSpacing,
+    doc: "Paragraph spacing in em units. Field: `spacing`.",
+    type: %__MODULE__{spacing: float()}
+  )
 
-  defmodule EnumIndent do
-    @moduledoc "Enum list indent. Field: `indent`."
-    defstruct [:indent]
-    @type t :: %__MODULE__{indent: float()}
-  end
+  defvariant(EnumIndent,
+    doc: "Enum list indent. Field: `indent`.",
+    type: %__MODULE__{indent: float()}
+  )
 
-  defmodule EnumBodyIndent do
-    @moduledoc "Enum list body indent. Field: `body_indent`."
-    defstruct [:body_indent]
-    @type t :: %__MODULE__{body_indent: float()}
-  end
+  defvariant(EnumBodyIndent,
+    doc: "Enum list body indent. Field: `body_indent`.",
+    type: %__MODULE__{body_indent: float()}
+  )
 
-  defmodule EnumItemSpacing do
-    @moduledoc "Enum list item spacing in em. Field: `spacing`."
-    defstruct [:spacing]
-    @type t :: %__MODULE__{spacing: float()}
-  end
+  defvariant(EnumItemSpacing,
+    doc: "Enum list item spacing in em. Field: `spacing`.",
+    type: %__MODULE__{spacing: float()}
+  )
 
-  defmodule ListIndent do
-    @moduledoc "Bullet list indent. Field: `indent`."
-    defstruct [:indent]
-    @type t :: %__MODULE__{indent: float()}
-  end
+  defvariant(ListIndent,
+    doc: "Bullet list indent. Field: `indent`.",
+    type: %__MODULE__{indent: float()}
+  )
 
-  defmodule ListBodyIndent do
-    @moduledoc "Bullet list body indent. Field: `body_indent`."
-    defstruct [:body_indent]
-    @type t :: %__MODULE__{body_indent: float()}
-  end
+  defvariant(ListBodyIndent,
+    doc: "Bullet list body indent. Field: `body_indent`.",
+    type: %__MODULE__{body_indent: float()}
+  )
 
-  defmodule ListItemSpacing do
-    @moduledoc "Bullet list item spacing in em. Field: `spacing`."
-    defstruct [:spacing]
-    @type t :: %__MODULE__{spacing: float()}
-  end
-
-  @type rule ::
-          PageSize.t()
-          | PageMargin.t()
-          | FontSize.t()
-          | FontFamily.t()
-          | FontWeight.t()
-          | TextColor.t()
-          | ParJustify.t()
-          | ParIndent.t()
-          | PageNumbering.t()
-          | PageHeader.t()
-          | PageFooter.t()
-          | HeadingNumbering.t()
-          | HeadingSupplement.t()
-          | HeadingOutlined.t()
-          | HeadingBookmarked.t()
-          | Lang.t()
-          | Hyphenate.t()
-          | Leading.t()
-          | ParSpacing.t()
-          | EnumIndent.t()
-          | EnumBodyIndent.t()
-          | EnumItemSpacing.t()
-          | ListIndent.t()
-          | ListBodyIndent.t()
-          | ListItemSpacing.t()
+  defvariant(ListItemSpacing,
+    doc: "Bullet list item spacing in em. Field: `spacing`.",
+    type: %__MODULE__{spacing: float()}
+  )
 
   @spec page_size(keyword()) :: PageSize.t()
   def page_size(opts) when is_list(opts) do

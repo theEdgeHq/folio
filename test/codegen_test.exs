@@ -16,6 +16,32 @@ defmodule Folio.CodegenTest do
   alias RustQ.Rust.AST.TypePath
   alias RustQ.Rust.AST.TypeVec
 
+  test "declarations generate structs, union types, and codegen metadata" do
+    content = Folio.Content.__folio_declarations__()
+    styles = Folio.Styles.__folio_declarations__()
+
+    assert length(content) == 62
+    assert length(styles) == 25
+
+    assert %{module: Folio.Content.Text, fields: fields} =
+             Enum.find(content, &(&1.name == :Text))
+
+    assert Keyword.keys(fields) == [:text, :size, :weight, :fill, :tracking]
+    assert %Folio.Content.Text{} == struct(Folio.Content.Text)
+
+    for declaration <- content ++ styles do
+      assert declaration.fields |> Keyword.keys() |> Enum.sort() ==
+               declaration.module
+               |> struct()
+               |> Map.delete(:__struct__)
+               |> Map.keys()
+               |> Enum.sort()
+    end
+
+    assert {:ok, [type: {:t, _type, []}]} = Code.Typespec.fetch_types(Folio.Content)
+    assert {:ok, [type: {:rule, _type, []}]} = Code.Typespec.fetch_types(Folio.Styles)
+  end
+
   test "derives the native content boundary from public content types" do
     items = ContentNodes.rust_items()
 

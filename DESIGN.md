@@ -131,14 +131,15 @@ folio/
 ├── lib/
 │   ├── folio.ex                 # Public API + use macro
 │   └── folio/
-│       ├── content.ex           # Public content structs and boundary typespecs
+│       ├── content.ex           # Single-source content declarations
+│       ├── declaration.ex       # Generates structs, unions, and codegen metadata
 │       ├── document.ex          # Document struct (content + styles)
 │       ├── dsl.ex               # Builder functions
 │       ├── native.ex            # RustlerPrecompiled loader and public specs
 │       ├── native/generated_stubs.ex
 │       ├── show.ex              # Elixir-side show-rule expansion
 │       ├── sigil.ex             # ~MD sigil
-│       └── styles.ex            # Public style structs and boundary typespecs
+│       └── styles.ex            # Single-source style declarations and constructors
 ├── native/folio_nif/
 │   ├── Cargo.toml
 │   └── src/
@@ -156,7 +157,7 @@ folio/
 
 1. **No Typst source strings** — Content trees built directly in Rust
 2. **comrak for Markdown** — same parser as MDEx, proven and fast
-3. **RustQ-generated Rustler boundary** — public Elixir structs and typespecs generate the native structs and enums
+3. **Single-source boundary declarations** — one Folio declaration generates each public struct/typespec and the metadata RustQ projects into native structs and enums
 4. **DSL functions return structs** — not strings, not AST — plain data
 5. **Math is parsed by Typst** — math strings go through `typst_syntax::parse_math()`
 6. **Style rules as data** — not macros, not code — plain keyword lists/maps

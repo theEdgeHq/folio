@@ -1,5 +1,8 @@
 use RustQ.Config
 
+require_file("lib/folio/declaration.ex")
+require_file("lib/folio/content.ex")
+require_file("lib/folio/styles.ex")
 require_file("codegen/folio/boundary_schema.ex")
 require_file("codegen/folio/content_nodes.ex")
 require_file("codegen/folio/native.ex")

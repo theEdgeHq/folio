@@ -5,7 +5,7 @@ defmodule Folio.Codegen.ContentNodes do
 
   @spec rust_items() :: [RustQ.Rust.AST.item()]
   def rust_items do
-    BoundarySchema.rust_items("lib/folio/content.ex", Folio.Content, :t, :Content,
+    BoundarySchema.rust_items(Folio.Content, :Content,
       exclude: [Folio.Content.ShowRule],
       names: [{Folio.Content.EnumList, :Enum}],
       overrides: [{{Folio.Content.Heading, :level}, :u8}],

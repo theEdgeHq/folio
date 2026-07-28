@@ -5,7 +5,7 @@ defmodule Folio.Codegen.Styles do
 
   @spec rust_items() :: [RustQ.Rust.AST.item()]
   def rust_items do
-    BoundarySchema.rust_items("lib/folio/styles.ex", Folio.Styles, :rule, :Style,
+    BoundarySchema.rust_items(Folio.Styles, :Style,
       overrides: [{{Folio.Styles.FontWeight, :weight}, :u16}],
       unknown: :unknown_style_variant
     )
