@@ -1,163 +1,125 @@
-# Typstex — Design
+# Folio — Design
 
-## What
+## Purpose
 
-Elixir bindings for Typst typesetting. Write documents in Markdown + Elixir DSL,
-get print-quality PDF/SVG/PNG via Typst's layout engine. No Typst language.
+Folio produces print-quality PDF, SVG, and PNG output from Markdown and typed
+Elixir content using Typst's layout engine through a Rustler NIF.
 
-## The Format
+It supports three public input forms:
 
-```elixir
-use Folio
+1. Markdown strings, parsed by Comrak.
+2. Lists of `%Folio.Content.*{}` structs built with `Folio.DSL`.
+3. `%Folio.Document{}` values containing content, styles, and attached files.
 
-~MD"""
-# #{report.title}
-
-#{report.introduction}
-
-## Key Findings
-
-#{table columns: [auto, 1 |> fr, auto] do
-  table_header ["Metric", "Value", "Trend"]
-  for f <- report.findings do
-    table_row [f.metric, f.value, f.trend]
-  end
-end}
-
-#{if report.has_chart do
-  figure do
-    image report.chart_path, width: 70 |> pct
-    caption report.chart_description
-  end
-end}
-
-Growth follows $x^2 + 1$ distribution.
-
-#{pagebreak()}
-
-## Appendix
-#{columns 2 do
-  report.appendix_text
-end}
-"""p
-```
-
-`~MD"""..."""p` — Markdown with `#{}` Elixir interpolation, `p` modifier outputs PDF.
+The uppercase `~MD` sigil is a convenience for static Markdown. It follows
+Elixir's uppercase-sigil semantics and does not interpolate. Dynamic documents
+should compose ordinary DSL values.
 
 ## Architecture
 
-```
-     Elixir                                     Rust (NIF)
-     ───────                                     ──────────
-
-~MD"""..."""p  ─parse─→  [Markdown chunks]      comrak parse
-                         [DSL structs    ]  ──→  MDEx AST nodes
-                                                + ExContent structs
-                                                      │
-                                                      ▼
-                                              ex_to_content()
-                                              per-node conversion
-                                                      │
-                                                      ▼
-                                              typst Content tree
-                                                      │
-                                              layout_document()
-                                                      │
-                                              typst_pdf::pdf()
-                                                      │
-                                                      ▼
-                                                 PDF bytes
+```text
+Elixir                                      Rust NIF
+──────                                      ────────
+Markdown string ──────────────────────────▶ Comrak AST conversion
+DSL content structs ──────────────────────▶ ExContent decoding
+Style structs ────────────────────────────▶ ExStyle decoding
+Attached files ───────────────────────────▶ compilation-scoped file store
+                                                   │
+                                                   ▼
+                                           Typst Content + Styles
+                                                   │
+                                                   ▼
+                                           layout_document()
+                                            │      │      │
+                                            ▼      ▼      ▼
+                                           PDF    SVG    PNG
 ```
 
-Three inputs flow into the Rust NIF:
+Folio does not generate Typst templates for its structured API. Most content is
+constructed directly as Typst elements. Two explicit features invoke Typst
+evaluation:
 
-1. **Markdown text** — parsed by comrak, each `NodeValue` maps to a `Content` node
-2. **DSL structs** — Elixir `%Folio.Content.*{}` → Rust `ExContent` → Typst `Content`
-3. **Style rules** — `%Folio.Styles.*{}` → Rust `ExStyleRule` → Typst `Styles`
+- math expressions are evaluated in Typst math mode;
+- `raw_typst/1` evaluates trusted Typst markup as an escape hatch.
 
-No Typst source string is ever generated. The Typst parser and evaluator are never invoked.
-Content trees are built directly and fed to the layout engine.
+`raw_typst/1` must not receive untrusted source.
 
 ## Elixir API
 
 ```elixir
-Typstex.to_pdf!(source, assigns)   # → binary()
-Typstex.to_svg!(source, assigns)   # → [binary()]
-Typstex.to_png!(source, assigns)   # → [binary()]
+Folio.parse_markdown(markdown)
+Folio.parse_markdown!(markdown)
+
+Folio.to_pdf(source, opts)
+Folio.to_svg(source, opts)
+Folio.to_png(source, opts)
 ```
 
-Where `source` is either a Markdown string, `~MD` sigil, or `%Folio.Document{}`.
+Compilation functions return `{:ok, output}` or
+`{:error, %Folio.CompileError{}}`.
 
-## DSL Functions
+`Folio.Document` accumulates plain content nodes, style rules, and binary file
+attachments. Strings passed to `Document.add_content/2` are plain text; callers
+must parse Markdown explicitly when they want Markdown semantics.
 
-All return `%Folio.Content.*{}` structs:
+## Boundary ownership
 
-- `heading(level, content)` — section heading
-- `text(str)` — plain text
-- `strong(content)` / `emph(content)` — bold / italic
-- `image(src, opts)` — image
-- `figure do ... end` — figure with caption
-- `table opts do ... end` — table with rows/headers/cells
-- `table_header(cells)` / `table_row(cells)` / `table_cell(content, opts)`
-- `columns count do ... end` — multi-column layout
-- `align(alignment, content)` — alignment
-- `block opts do ... end` — block container
-- `pad opts do ... end` — padding
-- `pagebreak()` / `parbreak()` / `linebreak()`
-- `list(items)` / `enum(items)` — lists
-- `link(url, text)` — hyperlink
-- `math(content, opts)` — math expression
-- `raw(text, opts)` — code block
-- `bibliography(source, opts)` — bibliography
-- `label(name)` / `ref(target)` — labels and references
+`Folio.Declaration` is the single source for public boundary variants. Each
+`defvariant` declaration generates:
 
-## Style Rules
+- the nested Elixir struct;
+- its `t()` typespec;
+- the owner module's union type;
+- field, traversal, and variant metadata consumed by Folio and RustQ.
 
-Applied via `Folio.Document` or `doc` macro:
+RustQ projects the declarations into checked-in Rust structs and enums. NIF
+wrappers and Elixir fallback stubs are derived from the handwritten Rust NIF
+implementations.
 
-```elixir
-Folio.Document.configure(page: [paper: :a4, margin: 2 |> cm], font: "Helvetica")
-|> Folio.Document.add_styles([
-  Styles.show_set({:heading, level: 1}, :text, size: pt(17)),
-  Styles.show_set({:heading, level: 1}, :align, alignment: :center),
-])
-```
+Policy remains explicit in `codegen/folio`: native exclusions, Rust integer
+widths, renamed variants, scheduler choices, and unknown-variant errors are not
+inferred.
+
+## Native ownership
+
+The following remain handwritten Rust because they contain domain behavior:
+
+- Comrak AST conversion;
+- `ExContent` to Typst element conversion;
+- Typst world, fonts, files, layout, and export;
+- panic containment and compilation-scoped cleanup.
+
+Generated Rust is limited to schema-shaped boundary code and NIF wrappers.
 
 ## Files
 
-```
+```text
 folio/
-├── codegen/folio/               # RustQ boundary generators
+├── codegen/folio/               # RustQ schemas and boundary policy
 ├── lib/
-│   ├── folio.ex                 # Public API + use macro
+│   ├── folio.ex                 # Public API and use macro
 │   └── folio/
 │       ├── content.ex           # Single-source content declarations
-│       ├── declaration.ex       # Generates structs, unions, and codegen metadata
-│       ├── document.ex          # Document struct (content + styles)
-│       ├── dsl.ex               # Builder functions
-│       ├── native.ex            # RustlerPrecompiled loader and public specs
-│       ├── native/generated_stubs.ex
+│       ├── declaration.ex       # Struct, union, and metadata generator
+│       ├── document.ex          # Content, styles, and attached files
+│       ├── dsl.ex               # Validating content constructors
 │       ├── show.ex              # Elixir-side show-rule expansion
-│       ├── sigil.ex             # ~MD sigil
-│       └── styles.ex            # Single-source style declarations and constructors
-├── native/folio_nif/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs               # Handwritten NIF implementations
-│       ├── types.rs             # Includes RustQ-generated boundary types
-│       ├── generated_*.rs       # Checked RustQ output
-│       ├── convert.rs           # ExContent → Typst Content
-│       ├── mdex_bridge.rs       # comrak NodeValue → ExContent
-│       └── world.rs             # Typst World, layout, and export
-├── rustq.exs                    # Checked-generation manifest
-└── test/
+│       ├── sigil.ex             # Static ~MD sigil
+│       └── styles.ex            # Style declarations and constructors
+├── native/folio_nif/src/
+│   ├── lib.rs                   # NIF implementations
+│   ├── convert.rs               # ExContent → Typst Content
+│   ├── mdex_bridge.rs           # Comrak nodes → ExContent
+│   ├── world.rs                 # Typst World, layout, and export
+│   └── generated_*.rs           # Checked RustQ output
+└── rustq.exs                    # Checked-generation manifest
 ```
 
-## Key Design Decisions
+## Design principles
 
-1. **No Typst source strings** — Content trees built directly in Rust
-2. **comrak for Markdown** — same parser as MDEx, proven and fast
-3. **Single-source boundary declarations** — one Folio declaration generates each public struct/typespec and the metadata RustQ projects into native structs and enums
-4. **DSL functions return structs** — not strings, not AST — plain data
-5. **Math is parsed by Typst** — math strings go through `typst_syntax::parse_math()`
-6. **Style rules as data** — not macros, not code — plain keyword lists/maps
+1. Structured data is preferred over generated source strings.
+2. Public Elixir structs remain inspectable and composable.
+3. Boundary facts have one owner and checked generated projections.
+4. Validation and normalization stay in handwritten DSL constructors.
+5. Domain-heavy Typst behavior stays in Rust.
+6. Escape hatches are explicit and documented as trusted-input APIs.

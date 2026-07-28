@@ -12,17 +12,26 @@ Print-quality PDF/SVG/PNG from Markdown + Elixir, powered by [Typst](https://typ
 Typst reads static files. Folio builds content trees from live Elixir data — Ecto queries, API responses, GenServer state. A Phoenix app generates PDFs from the same data it renders in HTML, with zero intermediate files:
 
 ```elixir
-def invoice_pdf(order) do
-  ~MD"""
-  # Invoice #{order.number}
+defmodule Invoices do
+  use Folio
 
-  #{table([gutter: "4pt"], do: [
-    table_header([table_cell("Item"), table_cell("Qty"), table_cell("Price")]),
-    for item <- order.line_items do
-      table_row([table_cell(item.name), table_cell("#{item.quantity}"), table_cell(Money.to_string(item.price))])
-    end
-  ])}
-  """p
+  def invoice_pdf(order) do
+    rows =
+      Enum.map(order.line_items, fn item ->
+        table_row([
+          table_cell(item.name),
+          table_cell(to_string(item.quantity)),
+          table_cell(Money.to_string(item.price))
+        ])
+      end)
+
+    Folio.to_pdf([
+      heading(1, "Invoice #{order.number}"),
+      table([gutter: "4pt"],
+        do: [table_header(["Item", "Qty", "Price"]) | rows]
+      )
+    ])
+  end
 end
 ```
 
@@ -44,27 +53,27 @@ defmodule Reports.Components do
 end
 ```
 
-### No Typst Language, No Typst Parser, No Typst Evaluator
+### Structured Content Without Typst Templates
 
-Folio constructs Typst content trees directly in Rust and feeds them straight to the layout engine. It bypasses Typst's parser, AST, and evaluation VM entirely:
+Folio's normal path constructs Typst content trees directly in Rust and feeds them to the layout engine. Markdown is parsed by Comrak, while DSL values remain structured data:
 
-- **No template injection** — there's no string template to inject into
-- **No syntax errors** — content is structurally valid by construction
-- **Smaller attack surface** — the Typst evaluator (file I/O, package imports, plugin loading) is never invoked
-- **Faster for programmatic documents** — skipping parse + eval stages
+- **No generated Typst templates** — dynamic values are represented as typed content nodes
+- **Structurally valid content** — the DSL does not concatenate source code
+- **Explicit escape hatches** — math and `raw_typst/1` invoke Typst evaluation intentionally; only pass trusted source to `raw_typst/1`
+- **Less parser overhead** — ordinary DSL content skips Typst markup parsing and evaluation
 
 ### Elixir-Native Concurrency for Batch Generation
 
 With Typst CLI, generating 10,000 invoices means 10,000 process spawns. With Folio on dirty schedulers:
 
 ```elixir
-orders
-|> Task.async_stream(
-  fn order -> Folio.to_pdf(build_invoice(order)) end,
-  max_concurrency: System.schedulers_online()
-)
-|> Stream.each(fn {:ok, pdf} -> upload(pdf) end)
-|> Stream.run()
+results =
+  Task.async_stream(
+    orders,
+    fn order -> Folio.to_pdf(build_invoice(order)) end,
+    max_concurrency: System.schedulers_online()
+  )
+  |> Enum.to_list()
 ```
 
 Fonts and layout data are loaded once and shared across compilations.
@@ -87,7 +96,7 @@ To build from source instead (e.g. for a custom target or during development):
 FOLIO_BUILD=1 mix compile
 ```
 
-Render Markdown to PDF with math, tables, and Elixir interpolation:
+Render Markdown to PDF with math and tables:
 
 ```elixir
 use Folio
@@ -95,7 +104,7 @@ use Folio
 {:ok, pdf} = Folio.to_pdf("# Hello\n\n**Bold** and $x^2$ math.")
 ```
 
-Or use the `~MD` sigil for multi-line documents — the `p` modifier returns `{:ok, pdf_binary}` directly:
+Or use the uppercase `~MD` sigil for static multi-line Markdown — the `p` modifier returns `{:ok, pdf_binary}` directly. As with other uppercase Elixir sigils, `~MD` does not interpolate:
 
 ```elixir
 {:ok, pdf} = ~MD"""
@@ -110,7 +119,7 @@ Some **bold** content with inline $E = m c^2$ math.
 """p
 ```
 
-For full control, compose content with the DSL — every function returns a plain struct:
+For dynamic values and full control, compose content with the DSL — every function returns a plain struct:
 
 ```elixir
 {:ok, pdf} = Folio.to_pdf([
@@ -165,7 +174,7 @@ Full API documentation at [hexdocs.pm/folio](https://hexdocs.pm/folio).
 | **Bibliography** | Built-in (`.bib`, `.yaml`) | No | No | Via Typst packages | No | No |
 | **Multi-page flow** | Automatic | Browser pagination | Browser pagination | Automatic | Manual page management | Manual page management |
 | **Output formats** | PDF, SVG, PNG | PDF, PDF/A | PDF | PDF | PDF | PDF |
-| **Template injection risk** | None (no string templates) | HTML injection possible | HTML injection possible | Typst code injection possible | N/A | N/A |
+| **Template injection risk** | None in the structured API; `raw_typst/1` is an explicit trusted-input escape hatch | HTML injection possible | HTML injection possible | Typst code injection possible | N/A | N/A |
 | **Batch performance** | Fonts shared, in-process NIF | Chrome session pool | Process spawn per PDF | In-process NIF | In-process | In-process |
 
 ### When to use what

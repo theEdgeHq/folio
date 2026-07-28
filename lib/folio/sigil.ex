@@ -1,13 +1,18 @@
 defmodule Folio.Sigil do
-  @moduledoc "Markdown sigil `~MD` for Folio."
+  @moduledoc """
+  Static Markdown sigil `~MD` for Folio.
+
+  Like other uppercase Elixir sigils, `~MD` does not interpolate.
+  """
 
   @doc false
   defmacro sigil_MD(term, modifiers) do
     format =
       case modifiers do
+        ~c"" -> :content
         ~c"p" -> :pdf
         ~c"s" -> :svg
-        _ -> :content
+        other -> raise ArgumentError, "unsupported ~MD modifier: #{List.to_string(other)}"
       end
 
     quote do

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `~MD` now rejects unsupported modifiers instead of silently treating them as content; documentation now explicitly describes it as a static, non-interpolating sigil
+
+### Fixed
+
+- Preserve nested lists and multiple block elements inside Markdown list items
+- Preserve GFM table column alignment in generated table cells
+- Apply and extract show rules through every declared content-bearing field, including quote attribution and bibliography titles
+- Prevent document-scoped file attachments from surviving a compilation panic, and keep globally registered files usable after a poisoned lock
+
 ## 0.3.1 (2026-05-12)
 
 ### Fixes

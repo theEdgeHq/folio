@@ -17,7 +17,12 @@ defmodule Folio.Document do
   @spec new() :: t()
   def new, do: %__MODULE__{content: [], styles: [], files: %{}}
 
-  @doc "Add content to the document."
+  @doc """
+  Add content to the document.
+
+  Strings are added as plain text. Parse Markdown first with
+  `Folio.parse_markdown!/1` when Markdown semantics are desired.
+  """
   @spec add_content(t(), Content.t() | [Content.t()] | String.t()) :: t()
   def add_content(%__MODULE__{content: content} = doc, nodes) do
     new_content = Content.flatten(content ++ Content.to_content(nodes))

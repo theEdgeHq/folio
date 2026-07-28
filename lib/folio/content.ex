@@ -172,7 +172,8 @@ defmodule Folio.Content do
 
   defvariant(EnumList,
     doc: "Numbered (ordered) list.",
-    type: %__MODULE__{children: [Folio.Content.t()], tight: boolean(), start: pos_integer() | nil}
+    type: %__MODULE__{children: [Folio.Content.t()], tight: boolean(), start: pos_integer() | nil},
+    tag: :enum
   )
 
   defvariant(EnumItem,
@@ -222,12 +223,14 @@ defmodule Folio.Content do
 
   defvariant(VSpace,
     doc: "Vertical spacing.",
-    type: %__MODULE__{amount: String.t(), weak: boolean()}
+    type: %__MODULE__{amount: String.t(), weak: boolean()},
+    tag: :vspace
   )
 
   defvariant(HSpace,
     doc: "Horizontal spacing.",
-    type: %__MODULE__{amount: String.t(), weak: boolean()}
+    type: %__MODULE__{amount: String.t(), weak: boolean()},
+    tag: :hspace
   )
 
   defvariant(Pad,
@@ -365,7 +368,7 @@ defmodule Folio.Content do
   defvariant(RawTypst,
     doc: """
     Raw Typst source injected directly into the document.
-    Use when Folio's abstraction isn't enough.
+    Use when Folio's abstraction isn't enough, and only with trusted source.
 
     Field: `source` — Typst markup/code string.
     """,

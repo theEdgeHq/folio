@@ -2,8 +2,7 @@ defmodule Folio.DSL do
   @moduledoc """
   Builder functions for Folio content nodes.
 
-  Every function returns a `%Folio.Content.*{}` struct.
-  Use inside `\#{}` interpolation in `~MD` sigils, or directly in Elixir code.
+  Every function returns a `%Folio.Content.*{}` struct for direct composition in Elixir code.
 
       use Folio
       content = [heading(1, "Title"), text("Hello"), strong("world")]
@@ -1107,6 +1106,9 @@ defmodule Folio.DSL do
 
   @doc """
   Raw Typst source injected directly.
+
+  This invokes Typst's evaluator. Only use source that you trust; prefer the
+  structured DSL for dynamic or untrusted values.
 
       raw_typst("#set text(hyphenate: false)\\nHello")
   """

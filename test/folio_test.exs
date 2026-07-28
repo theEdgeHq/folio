@@ -50,6 +50,58 @@ defmodule FolioTest do
       assert [%Folio.Content.Table{children: [_header, _row]}] = Folio.parse_markdown!(md)
     end
 
+    test "preserves GFM table alignment" do
+      md = "| Left | Center | Right |\n| :--- | :---: | ---: |\n| A | B | C |"
+
+      assert [
+               %Folio.Content.Table{
+                 children: [
+                   %Folio.Content.TableHeader{
+                     children: [
+                       %Folio.Content.TableCell{align: "left"},
+                       %Folio.Content.TableCell{align: "center"},
+                       %Folio.Content.TableCell{align: "right"}
+                     ]
+                   },
+                   _row
+                 ]
+               }
+             ] = Folio.parse_markdown!(md)
+    end
+
+    test "preserves nested and multi-block list item content" do
+      markdown = "- First\n  - Nested A\n  - Nested B\n- Second"
+
+      assert [
+               %Folio.Content.List{
+                 children: [
+                   %Folio.Content.ListItem{
+                     body: [
+                       %Folio.Content.Text{text: "First"},
+                       %Folio.Content.List{children: nested}
+                     ]
+                   },
+                   %Folio.Content.ListItem{body: [%Folio.Content.Text{text: "Second"}]}
+                 ]
+               }
+             ] = Folio.parse_markdown!(markdown)
+
+      assert length(nested) == 2
+
+      assert [
+               %Folio.Content.List{
+                 children: [
+                   %Folio.Content.ListItem{
+                     body: [
+                       %Folio.Content.Paragraph{body: [%Folio.Content.Text{text: "first"}]},
+                       %Folio.Content.Paragraph{body: [%Folio.Content.Text{text: "second"}]}
+                     ]
+                   }
+                 ]
+               }
+             ] = Folio.parse_markdown!("- first\n\n  second")
+    end
+
     test "parses block math" do
       assert [
                %Folio.Content.Paragraph{
@@ -211,7 +263,9 @@ defmodule FolioTest do
         Folio.Document.new()
         |> Folio.Document.add_style(Folio.Styles.font_size(14))
         |> Folio.Document.add_style(Folio.Styles.page_numbering("1"))
-        |> Folio.Document.add_content("# Document API\n\nBuilt with pipeline.")
+        |> Folio.Document.add_content(
+          Folio.parse_markdown!("# Document API\n\nBuilt with pipeline.")
+        )
 
       assert {:ok, pdf} = Folio.to_pdf(doc)
       assert is_binary(pdf)
@@ -229,6 +283,63 @@ defmodule FolioTest do
     end
   end
 
+  describe "show rules" do
+    test "transforms every content-bearing field" do
+      uppercase =
+        %Folio.Content.ShowRule{
+          target: :text,
+          transform: fn text -> %{text | text: String.upcase(text.text)} end
+        }
+
+      content = [
+        uppercase,
+        %Folio.Content.Quote{
+          body: [%Folio.Content.Text{text: "body"}],
+          block: true,
+          attribution: [%Folio.Content.Text{text: "author"}]
+        },
+        %Folio.Content.Bibliography{
+          sources: ["refs.bib"],
+          title: [%Folio.Content.Text{text: "references"}],
+          full: false
+        }
+      ]
+
+      assert [
+               %Folio.Content.Quote{
+                 body: [%Folio.Content.Text{text: "BODY"}],
+                 attribution: [%Folio.Content.Text{text: "AUTHOR"}]
+               },
+               %Folio.Content.Bibliography{
+                 title: [%Folio.Content.Text{text: "REFERENCES"}]
+               }
+             ] = Folio.Show.apply(content)
+    end
+
+    test "extracts a rule nested in any content-bearing field" do
+      uppercase =
+        %Folio.Content.ShowRule{
+          target: :text,
+          transform: fn text -> %{text | text: String.upcase(text.text)} end
+        }
+
+      content = [
+        %Folio.Content.Quote{
+          body: [%Folio.Content.Text{text: "body"}],
+          block: true,
+          attribution: [uppercase, %Folio.Content.Text{text: "author"}]
+        }
+      ]
+
+      assert [
+               %Folio.Content.Quote{
+                 body: [%Folio.Content.Text{text: "BODY"}],
+                 attribution: [%Folio.Content.Text{text: "AUTHOR"}]
+               }
+             ] = Folio.Show.apply(content)
+    end
+  end
+
   describe "~MD sigil" do
     import Folio.Sigil
 
@@ -236,6 +347,18 @@ defmodule FolioTest do
       nodes = ~MD"# Hello"
       assert is_list(nodes)
       assert [%Folio.Content.Heading{level: 1}] = nodes
+    end
+
+    test "~MD rejects unsupported modifiers" do
+      quoted =
+        quote do
+          import Folio.Sigil
+          ~MD"Hello"x
+        end
+
+      assert_raise ArgumentError, ~r/unsupported ~MD modifier: x/, fn ->
+        Code.eval_quoted(quoted)
+      end
     end
   end
 

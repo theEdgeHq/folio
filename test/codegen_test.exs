@@ -29,6 +29,21 @@ defmodule Folio.CodegenTest do
     assert Keyword.keys(fields) == [:text, :size, :weight, :fill, :tracking]
     assert %Folio.Content.Text{} == struct(Folio.Content.Text)
 
+    assert %{child_fields: [:body, :attribution], tag: :quote} =
+             Folio.Content.__folio_declaration__(%Folio.Content.Quote{})
+
+    assert %{child_fields: [:title]} =
+             Folio.Content.__folio_declaration__(%Folio.Content.Bibliography{})
+
+    assert %{tag: :enum} =
+             Folio.Content.__folio_declaration__(%Folio.Content.EnumList{})
+
+    assert %{tag: :vspace} =
+             Folio.Content.__folio_declaration__(%Folio.Content.VSpace{})
+
+    assert %{tag: :hspace} =
+             Folio.Content.__folio_declaration__(%Folio.Content.HSpace{})
+
     for declaration <- content ++ styles do
       assert declaration.fields |> Keyword.keys() |> Enum.sort() ==
                declaration.module

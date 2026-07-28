@@ -32,7 +32,9 @@ defmodule Folio.Declaration do
     declaration = %{
       name: name,
       module: Module.concat(owner, name),
-      fields: fields
+      fields: fields,
+      child_fields: child_fields(fields, owner),
+      tag: Keyword.get_lazy(opts, :tag, fn -> default_tag(name) end)
     }
 
     Module.put_attribute(owner, :folio_variants, declaration)
@@ -62,11 +64,20 @@ defmodule Folio.Declaration do
       {:@, metadata,
        [{:type, metadata, [{:"::", metadata, [{union, metadata, []}, union_type]}]}]}
 
+    variants_by_module = Map.new(variants, &{&1.module, &1})
+
     quote do
       unquote(type_definition)
 
       @doc false
       def __folio_declarations__, do: unquote(Macro.escape(variants))
+
+      @doc false
+      def __folio_declaration__(%{__struct__: module}) do
+        Map.get(unquote(Macro.escape(variants_by_module)), module)
+      end
+
+      def __folio_declaration__(_term), do: nil
     end
   end
 
@@ -87,6 +98,31 @@ defmodule Folio.Declaration do
   defp struct_fields!(type) do
     raise ArgumentError,
           ":type must be a %__MODULE__{} typespec, got: #{Macro.to_string(type)}"
+  end
+
+  defp child_fields(fields, owner) do
+    for {name, type} <- fields, content_container?(type, owner), do: name
+  end
+
+  defp content_container?([type], owner), do: owner_type?(type, owner)
+
+  defp content_container?({:|, _, [left, right]}, owner) do
+    content_container?(left, owner) or content_container?(right, owner)
+  end
+
+  defp content_container?(_type, _owner), do: false
+
+  defp owner_type?({{:., _, [{:__aliases__, _, parts}, :t]}, _, []}, owner) do
+    Module.concat(parts) == owner
+  end
+
+  defp owner_type?(_type, _owner), do: false
+
+  defp default_tag(name) do
+    name
+    |> Atom.to_string()
+    |> Macro.underscore()
+    |> String.to_atom()
   end
 
   defp remote_type(%{name: name}, metadata) do

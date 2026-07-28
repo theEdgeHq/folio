@@ -1,29 +1,31 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, MutexGuard};
 
+use ecow::eco_format;
 use typst::comemo::{Constraint, Track, TrackedMut};
 use typst::diag::{FileError, FileResult};
 use typst::engine::{Engine, Route, Sink, Traced};
 use typst::foundations::{
-    Bytes, Content, Context, Datetime, Derived, Duration, NativeElement, Output, Smart,
-    StyleChain, Styles, Target, TargetElem,
+    Bytes, Content, Context, Datetime, Derived, Duration, NativeElement, Output, Smart, StyleChain,
+    Styles, Target, TargetElem,
 };
 use typst::introspection::{EmptyIntrospector, Introspector, MAX_ITERS};
-use typst::layout::{Abs, Margin, Sides};
 use typst::layout::PageElem;
+use typst::layout::{Abs, Margin, Sides};
 use typst::loading::{DataSource, LoadSource, Loaded};
 use typst::math::EquationElem;
-use typst::syntax::{FileId, RootedPath, Source, Span, Spanned, SyntaxMode, VirtualPath, VirtualRoot};
+use typst::syntax::{
+    FileId, RootedPath, Source, Span, Spanned, SyntaxMode, VirtualPath, VirtualRoot,
+};
 use typst::text::{Font, FontBook, TextElem, TextSize};
 use typst::utils::LazyHash;
 use typst::{Features, Library, LibraryExt, World};
 use typst_layout::layout_document;
-use typst_pdf::{PdfOptions, pdf};
-use typst_svg::svg;
+use typst_pdf::{pdf, PdfOptions};
 use typst_render::render;
-use ecow::eco_format;
+use typst_svg::svg;
 
 use crate::convert::build_content;
 use crate::types::{ExContent, ExStyle};
@@ -60,31 +62,34 @@ static GLOBAL: LazyLock<GlobalState> = LazyLock::new(|| {
         .collect();
     fonts.extend(load_system_fonts());
     let book = LazyHash::new(FontBook::from_fonts(&fonts));
-    let library = LazyHash::new(
-        Library::builder()
-            .with_features(Features::all())
-            .build(),
-    );
-    let main_id = RootedPath::new(
-        VirtualRoot::Project,
-        VirtualPath::new("main.typ").unwrap(),
-    )
-    .intern();
-    GlobalState { library, fonts, book, main_id }
+    let library = LazyHash::new(Library::builder().with_features(Features::all()).build());
+    let main_id =
+        RootedPath::new(VirtualRoot::Project, VirtualPath::new("main.typ").unwrap()).intern();
+    GlobalState {
+        library,
+        fonts,
+        book,
+        main_id,
+    }
 });
 
-type FileStore = Arc<Mutex<HashMap<String, Vec<u8>>>>;
+type FileStore = Mutex<HashMap<String, Vec<u8>>>;
 
 /// Global fallback file store for `register_file`/`unregister_file`.
-static GLOBAL_FILE_STORE: LazyLock<FileStore> =
-    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+static GLOBAL_FILE_STORE: LazyLock<FileStore> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn global_file_store() -> MutexGuard<'static, HashMap<String, Vec<u8>>> {
+    GLOBAL_FILE_STORE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 pub fn register_file(path: String, data: Vec<u8>) {
-    GLOBAL_FILE_STORE.lock().unwrap().insert(path, data);
+    global_file_store().insert(path, data);
 }
 
 pub fn unregister_file(path: String) {
-    GLOBAL_FILE_STORE.lock().unwrap().remove(&path);
+    global_file_store().remove(&path);
 }
 
 thread_local! {
@@ -95,39 +100,56 @@ pub fn set_session_files(files: HashMap<String, Vec<u8>>) {
     SESSION_FILES.with(|cell| *cell.borrow_mut() = files);
 }
 
-pub fn clear_session_files() {
+fn clear_session_files() {
     SESSION_FILES.with(|cell| cell.borrow_mut().clear());
+}
+
+struct SessionFilesGuard;
+
+impl Drop for SessionFilesGuard {
+    fn drop(&mut self) {
+        clear_session_files();
+    }
 }
 
 /// Look up file data: session files first, then global store.
 pub fn get_file_data(src: &str) -> Option<Vec<u8>> {
-    SESSION_FILES.with(|cell| {
-        if let Some(data) = cell.borrow().get(src) {
-            return Some(data.clone());
-        }
-        None
-    }).or_else(|| GLOBAL_FILE_STORE.lock().unwrap().get(src).cloned())
+    SESSION_FILES
+        .with(|cell| {
+            if let Some(data) = cell.borrow().get(src) {
+                return Some(data.clone());
+            }
+            None
+        })
+        .or_else(|| global_file_store().get(src).cloned())
 }
 
 pub struct FolioWorld {
     styles: Vec<ExStyle>,
+    _session_files: SessionFilesGuard,
 }
 
 impl FolioWorld {
     pub fn new(styles: Vec<ExStyle>, session_files: HashMap<String, Vec<u8>>) -> Self {
         set_session_files(session_files);
-        Self { styles }
+        Self {
+            styles,
+            _session_files: SessionFilesGuard,
+        }
     }
 
     pub fn compile_to_pdf(&self, content: &[ExContent]) -> Result<Vec<u8>, String> {
         let doc = self.layout(content)?;
-        pdf(&doc, &PdfOptions {
-            ident: Smart::Auto,
-            timestamp: None,
-            page_ranges: None,
-            standards: Default::default(),
-            tagged: false,
-        })
+        pdf(
+            &doc,
+            &PdfOptions {
+                ident: Smart::Auto,
+                timestamp: None,
+                page_ranges: None,
+                standards: Default::default(),
+                tagged: false,
+            },
+        )
         .map_err(|e| format!("PDF export error: {:?}", e))
     }
 
@@ -141,9 +163,14 @@ impl FolioWorld {
     pub fn compile_to_png(&self, content: &[ExContent], dpi: f64) -> Result<Vec<Vec<u8>>, String> {
         let scale = if dpi <= 0.0 { 2.0 } else { dpi };
         let doc = self.layout(content)?;
-        doc.pages().iter().map(|p| {
-            render(p, scale as f32).encode_png().map_err(|e| format!("PNG encode error: {:?}", e))
-        }).collect()
+        doc.pages()
+            .iter()
+            .map(|p| {
+                render(p, scale as f32)
+                    .encode_png()
+                    .map_err(|e| format!("PNG encode error: {:?}", e))
+            })
+            .collect()
     }
 
     fn layout(&self, content: &[ExContent]) -> Result<typst_layout::PagedDocument, String> {
@@ -184,7 +211,9 @@ impl FolioWorld {
                 let mut engine = Engine {
                     routines: &typst::ROUTINES,
                     world: Track::track(self),
-                    introspector: typst::utils::Protected::new(introspector.track_with(&constraint)),
+                    introspector: typst::utils::Protected::new(
+                        introspector.track_with(&constraint),
+                    ),
                     traced: traced.track(),
                     sink: iter_sink.track_mut(),
                     route: Route::root(),
@@ -237,7 +266,11 @@ fn style_content(engine: &mut Engine, nodes: &[ExContent]) -> Content {
     build_content(engine, nodes)
 }
 
-fn apply_styles(styles: &mut typst::foundations::Styles, user_styles: &[ExStyle], engine: &mut Engine) {
+fn apply_styles(
+    styles: &mut typst::foundations::Styles,
+    user_styles: &[ExStyle],
+    engine: &mut Engine,
+) {
     for s in user_styles {
         match s {
             ExStyle::PageSize(sz) => {
@@ -252,15 +285,18 @@ fn apply_styles(styles: &mut typst::foundations::Styles, user_styles: &[ExStyle]
                 let side = |v: Option<f64>| v.map(|x| Smart::Custom(Abs::pt(x).into()));
                 if m.top.is_none() && m.right.is_none() && m.bottom.is_none() && m.left.is_none() {
                 } else {
-                    styles.set(PageElem::margin, Margin {
-                        sides: Sides {
-                            top: side(m.top),
-                            right: side(m.right),
-                            bottom: side(m.bottom),
-                            left: side(m.left),
+                    styles.set(
+                        PageElem::margin,
+                        Margin {
+                            sides: Sides {
+                                top: side(m.top),
+                                right: side(m.right),
+                                bottom: side(m.bottom),
+                                left: side(m.left),
+                            },
+                            two_sided: None,
                         },
-                        two_sided: None,
-                    });
+                    );
                 }
             }
             ExStyle::FontSize(fs) => {
@@ -268,13 +304,18 @@ fn apply_styles(styles: &mut typst::foundations::Styles, user_styles: &[ExStyle]
             }
             ExStyle::FontFamily(ff) => {
                 let families: typst::text::FontList = typst::text::FontList(
-                    ff.families.iter()
+                    ff.families
+                        .iter()
                         .map(|s| typst::text::FontFamily::new(s))
-                        .collect());
+                        .collect(),
+                );
                 styles.set(TextElem::font, families);
             }
             ExStyle::FontWeight(fw) => {
-                styles.set(TextElem::weight, typst::text::FontWeight::from_number(fw.weight));
+                styles.set(
+                    TextElem::weight,
+                    typst::text::FontWeight::from_number(fw.weight),
+                );
             }
             ExStyle::TextColor(tc) => {
                 if let Some(color) = crate::convert::parse_color(&tc.color) {
@@ -297,10 +338,16 @@ fn apply_styles(styles: &mut typst::foundations::Styles, user_styles: &[ExStyle]
                 }
             }
             ExStyle::PageHeader(ph) => {
-                styles.set(PageElem::header, Smart::Custom(Some(style_content(engine, &ph.content))));
+                styles.set(
+                    PageElem::header,
+                    Smart::Custom(Some(style_content(engine, &ph.content))),
+                );
             }
             ExStyle::PageFooter(pf) => {
-                styles.set(PageElem::footer, Smart::Custom(Some(style_content(engine, &pf.content))));
+                styles.set(
+                    PageElem::footer,
+                    Smart::Custom(Some(style_content(engine, &pf.content))),
+                );
             }
             ExStyle::HeadingNumbering(hn) => {
                 if let Ok(pat) = NumberingPattern::from_str(&hn.pattern) {
@@ -310,7 +357,10 @@ fn apply_styles(styles: &mut typst::foundations::Styles, user_styles: &[ExStyle]
             ExStyle::HeadingSupplement(hs) => {
                 styles.set(
                     HeadingElem::supplement,
-                    Smart::Custom(Some(Supplement::Content(style_content(engine, &hs.content)))),
+                    Smart::Custom(Some(Supplement::Content(style_content(
+                        engine,
+                        &hs.content,
+                    )))),
                 );
             }
             ExStyle::HeadingOutlined(ho) => {
@@ -330,49 +380,73 @@ fn apply_styles(styles: &mut typst::foundations::Styles, user_styles: &[ExStyle]
             ExStyle::Leading(l) => {
                 styles.set(
                     typst::model::ParElem::leading,
-                    typst::layout::Length { abs: Abs::zero(), em: typst::layout::Em::new(l.leading) },
+                    typst::layout::Length {
+                        abs: Abs::zero(),
+                        em: typst::layout::Em::new(l.leading),
+                    },
                 );
             }
             ExStyle::ParSpacing(s) => {
                 styles.set(
                     typst::model::ParElem::spacing,
-                    typst::layout::Length { abs: Abs::zero(), em: typst::layout::Em::new(s.spacing) },
+                    typst::layout::Length {
+                        abs: Abs::zero(),
+                        em: typst::layout::Em::new(s.spacing),
+                    },
                 );
             }
             ExStyle::EnumIndent(e) => {
                 styles.set(
                     typst::model::EnumElem::indent,
-                    typst::layout::Length { abs: Abs::pt(e.indent), em: typst::layout::Em::zero() },
+                    typst::layout::Length {
+                        abs: Abs::pt(e.indent),
+                        em: typst::layout::Em::zero(),
+                    },
                 );
             }
             ExStyle::EnumBodyIndent(e) => {
                 styles.set(
                     typst::model::EnumElem::body_indent,
-                    typst::layout::Length { abs: Abs::pt(e.body_indent), em: typst::layout::Em::zero() },
+                    typst::layout::Length {
+                        abs: Abs::pt(e.body_indent),
+                        em: typst::layout::Em::zero(),
+                    },
                 );
             }
             ExStyle::EnumItemSpacing(e) => {
                 styles.set(
                     typst::model::EnumElem::spacing,
-                    Smart::Custom(typst::layout::Length { abs: Abs::zero(), em: typst::layout::Em::new(e.spacing) }),
+                    Smart::Custom(typst::layout::Length {
+                        abs: Abs::zero(),
+                        em: typst::layout::Em::new(e.spacing),
+                    }),
                 );
             }
             ExStyle::ListIndent(l) => {
                 styles.set(
                     typst::model::ListElem::indent,
-                    typst::layout::Length { abs: Abs::pt(l.indent), em: typst::layout::Em::zero() },
+                    typst::layout::Length {
+                        abs: Abs::pt(l.indent),
+                        em: typst::layout::Em::zero(),
+                    },
                 );
             }
             ExStyle::ListBodyIndent(l) => {
                 styles.set(
                     typst::model::ListElem::body_indent,
-                    typst::layout::Length { abs: Abs::pt(l.body_indent), em: typst::layout::Em::zero() },
+                    typst::layout::Length {
+                        abs: Abs::pt(l.body_indent),
+                        em: typst::layout::Em::zero(),
+                    },
                 );
             }
             ExStyle::ListItemSpacing(l) => {
                 styles.set(
                     typst::model::ListElem::spacing,
-                    Smart::Custom(typst::layout::Length { abs: Abs::zero(), em: typst::layout::Em::new(l.spacing) }),
+                    Smart::Custom(typst::layout::Length {
+                        abs: Abs::zero(),
+                        em: typst::layout::Em::new(l.spacing),
+                    }),
                 );
             }
         }
@@ -380,9 +454,15 @@ fn apply_styles(styles: &mut typst::foundations::Styles, user_styles: &[ExStyle]
 }
 
 impl World for FolioWorld {
-    fn library(&self) -> &LazyHash<Library> { &GLOBAL.library }
-    fn book(&self) -> &LazyHash<FontBook> { &GLOBAL.book }
-    fn main(&self) -> FileId { GLOBAL.main_id }
+    fn library(&self) -> &LazyHash<Library> {
+        &GLOBAL.library
+    }
+    fn book(&self) -> &LazyHash<FontBook> {
+        &GLOBAL.book
+    }
+    fn main(&self) -> FileId {
+        GLOBAL.main_id
+    }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
         if id == GLOBAL.main_id {
@@ -400,6 +480,10 @@ impl World for FolioWorld {
         }
     }
 
-    fn font(&self, index: usize) -> Option<Font> { GLOBAL.fonts.get(index).cloned() }
-    fn today(&self, _offset: Option<Duration>) -> Option<Datetime> { None }
+    fn font(&self, index: usize) -> Option<Font> {
+        GLOBAL.fonts.get(index).cloned()
+    }
+    fn today(&self, _offset: Option<Duration>) -> Option<Datetime> {
+        None
+    }
 }

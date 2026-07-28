@@ -1,6 +1,6 @@
-mod types;
 mod convert;
 mod mdex_bridge;
+mod types;
 mod world;
 
 use std::panic::AssertUnwindSafe;
@@ -9,9 +9,9 @@ use rustler::{Env, NifResult, OwnedBinary};
 
 rustler::atoms!(ok);
 
-use world::FolioWorld;
-use world as world_mod;
 use types::{ExContent, ExStyle};
+use world as world_mod;
+use world::FolioWorld;
 
 include!("generated_nifs.rs");
 
@@ -51,9 +51,6 @@ fn parse_markdown_impl(markdown: String) -> NifResult<Vec<ExContent>> {
         options.extension.strikethrough = true;
         options.extension.autolink = true;
         options.extension.math_dollars = true;
-        options.extension.strikethrough = true;
-        options.extension.table = true;
-        options.extension.autolink = true;
         options.extension.description_lists = true;
         options.extension.tasklist = true;
 
@@ -74,7 +71,6 @@ fn compile_pdf_impl<'a>(
         let result = world
             .compile_to_pdf(&content)
             .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)));
-        world_mod::clear_session_files();
         let bytes = result?;
         alloc_binary(env, &bytes)
     })
@@ -88,11 +84,9 @@ fn compile_svg_impl<'a>(
     catch_nif("compile_svg", || {
         let session_files = decode_file_map(files);
         let world = FolioWorld::new(styles, session_files);
-        let result = world
+        world
             .compile_to_svg(&content)
-            .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)));
-        world_mod::clear_session_files();
-        result
+            .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)))
     })
 }
 
@@ -112,7 +106,6 @@ fn compile_png_impl<'a>(
         let result = world
             .compile_to_png(&content, dpi)
             .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)));
-        world_mod::clear_session_files();
         let pages = result?;
         pages.iter().map(|b| alloc_binary(env, b)).collect()
     })
@@ -128,8 +121,13 @@ fn unregister_file_impl(path: String) -> rustler::Atom {
     ok()
 }
 
-fn decode_file_map(files: std::collections::HashMap<String, rustler::Binary<'_>>) -> std::collections::HashMap<String, Vec<u8>> {
-    files.into_iter().map(|(k, v)| (k, v.as_slice().to_vec())).collect()
+fn decode_file_map(
+    files: std::collections::HashMap<String, rustler::Binary<'_>>,
+) -> std::collections::HashMap<String, Vec<u8>> {
+    files
+        .into_iter()
+        .map(|(k, v)| (k, v.as_slice().to_vec()))
+        .collect()
 }
 
 fn alloc_binary<'a>(env: Env<'a>, bytes: &[u8]) -> NifResult<rustler::Binary<'a>> {

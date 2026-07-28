@@ -4,11 +4,7 @@ defmodule Folio do
 
       use Folio
 
-      content = ~MD""
-      # Report
-
-      Some **bold** content with $x^2$ math.
-      ""
+      content = ~MD"# Report\\n\\nSome **bold** content with $x^2$ math."
 
       {:ok, pdf} = Folio.to_pdf(content)
 
@@ -25,7 +21,7 @@ defmodule Folio do
         Folio.Document.new()
         |> Folio.Document.attach_file("logo.png", File.read!("logo.png"))
         |> Folio.Document.add_style(Folio.Styles.page_numbering("1"))
-        |> Folio.Document.add_content("# Hello\\n\\nWorld")
+        |> Folio.Document.add_content(Folio.parse_markdown!("# Hello\\n\\nWorld"))
 
       {:ok, pdf} = Folio.to_pdf(doc)
 
