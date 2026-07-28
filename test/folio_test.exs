@@ -272,14 +272,21 @@ defmodule FolioTest do
       assert byte_size(pdf) > 100
     end
 
-    test "Document styles merge with opts styles" do
+    test "call-site styles override document styles" do
+      content = Folio.parse_markdown!("Override")
+
       doc =
         Folio.Document.new()
         |> Folio.Document.add_style(Folio.Styles.font_size(12))
-        |> Folio.Document.add_content("Test")
+        |> Folio.Document.add_content(content)
 
-      assert {:ok, pdf} = Folio.to_pdf(doc, styles: [Folio.Styles.page_numbering("1")])
-      assert is_binary(pdf)
+      assert {:ok, overridden} =
+               Folio.to_svg(doc, styles: [Folio.Styles.font_size(24)])
+
+      assert {:ok, expected} =
+               Folio.to_svg(content, styles: [Folio.Styles.font_size(24)])
+
+      assert overridden == expected
     end
   end
 
@@ -645,7 +652,22 @@ defmodule FolioTest do
       end
     end
 
-    test "polygon/2 rejects non-list vertices" do
+    test "highlight/2 rejects invalid options clearly" do
+      assert_raise ArgumentError, ~r/highlight\/2 expects a keyword list/, fn ->
+        highlight("marked", :yellow)
+      end
+    end
+
+    test "polygon/2 accepts numeric coordinate pairs" do
+      assert %Folio.Content.Polygon{vertices: ["0,0", "50,0", "25,40"]} =
+               polygon([{0, 0}, {50, 0}, {25, 40}])
+    end
+
+    test "polygon/2 rejects invalid vertices" do
+      assert_raise ArgumentError, ~r/vertices must be numeric coordinate pairs/, fn ->
+        polygon([{0, 0}, :bad])
+      end
+
       assert_raise ArgumentError, ~r/expects a list/, fn -> polygon("bad") end
     end
 
@@ -669,6 +691,71 @@ defmodule FolioTest do
 
     test "term_list/2 rejects non-tuple elements" do
       assert_raise ArgumentError, ~r/not a 2-tuple/, fn -> term_list([1, 2, 3]) end
+    end
+  end
+
+  describe "native value validation" do
+    import Folio.DSL
+
+    test "rejects malformed lengths" do
+      assert {:error, %Folio.CompileError{reason: reason}} =
+               Folio.to_pdf([strong(text("nested", size: "large-ish"))])
+
+      assert reason =~ ~s(invalid length for content[0].body[0].size: "large-ish")
+    end
+
+    test "rejects malformed colors" do
+      assert {:error, %Folio.CompileError{reason: reason}} =
+               Folio.to_pdf([highlight("marked", fill: "rgb(1, 2, 3, 4)")])
+
+      assert reason =~ "invalid color"
+      assert reason =~ ".fill"
+    end
+
+    test "rejects malformed strokes, coordinates, and alignments" do
+      assert {:error, %Folio.CompileError{reason: stroke_reason}} =
+               Folio.to_pdf([line(stroke: "thick-ish")])
+
+      assert stroke_reason =~ "invalid stroke"
+
+      assert {:error, %Folio.CompileError{reason: coordinate_reason}} =
+               Folio.to_pdf([line(start: "origin")])
+
+      assert coordinate_reason =~ "invalid coordinate"
+
+      assert {:error, %Folio.CompileError{reason: alignment_reason}} =
+               Folio.to_pdf([place("misplaced", alignment: "somewhere")])
+
+      assert alignment_reason =~ "invalid alignment"
+    end
+
+    test "accepts two-dimensional alignments" do
+      assert {:ok, pdf} = Folio.to_pdf([place("placed", alignment: "top + right")])
+      assert is_binary(pdf)
+    end
+
+    test "rejects malformed numbering patterns" do
+      assert {:error, %Folio.CompileError{reason: reason}} =
+               Folio.to_pdf("numbered", styles: [Folio.Styles.page_numbering("???")])
+
+      assert reason =~ "invalid numbering pattern"
+      assert reason =~ "styles[0].pattern"
+    end
+
+    test "rejects malformed language codes" do
+      assert {:error, %Folio.CompileError{reason: reason}} =
+               Folio.to_pdf("language", styles: [Folio.Styles.lang("not a language")])
+
+      assert reason =~ "invalid language code"
+      assert reason =~ "styles[0].lang"
+    end
+
+    test "rejects malformed URLs" do
+      assert {:error, %Folio.CompileError{reason: reason}} =
+               Folio.to_pdf([link("")])
+
+      assert reason =~ "invalid URL"
+      assert reason =~ "content[0].url"
     end
   end
 

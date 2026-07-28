@@ -29,7 +29,12 @@ defmodule Folio.Document do
     %{doc | content: new_content}
   end
 
-  @doc "Add one or more style rules to the document."
+  @doc """
+  Add one or more style rules to the document.
+
+  Rules are applied in order, with later matching rules taking precedence.
+  Styles passed directly to a compile function override document styles.
+  """
   @spec add_style(t(), Styles.rule() | [Styles.rule()]) :: t()
   def add_style(%__MODULE__{styles: styles} = doc, rules) when is_list(rules) do
     %{doc | styles: styles ++ rules}

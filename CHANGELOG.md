@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- Call-site styles now override matching styles stored in a `Folio.Document`
+- Compilation now rejects malformed lengths, colors, strokes, coordinates, alignments, numbering patterns, language codes, and URLs instead of silently substituting defaults
+
 ### Changed
 
 - `~MD` now rejects unsupported modifiers instead of silently treating them as content; documentation now explicitly describes it as a static, non-interpolating sigil
@@ -12,6 +17,12 @@
 - Preserve GFM table column alignment in generated table cells
 - Apply and extract show rules through every declared content-bearing field, including quote attribution and bibliography titles
 - Prevent document-scoped file attachments from surviving a compilation panic, and keep globally registered files usable after a poisoned lock
+- Accept documented numeric coordinate tuples in `polygon/2`
+- Raise a clear `ArgumentError` when `highlight/2` receives invalid options
+
+### Compatibility
+
+- The minimum supported Elixir version is now 1.19, matching development dependencies and CI
 
 ## 0.3.1 (2026-05-12)
 

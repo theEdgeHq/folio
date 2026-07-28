@@ -8,7 +8,7 @@ defmodule Folio.MixProject do
     [
       app: :folio,
       version: @version,
-      elixir: "~> 1.16",
+      elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),

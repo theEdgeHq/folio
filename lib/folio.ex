@@ -77,6 +77,7 @@ defmodule Folio do
   Compile to PDF bytes.
 
   Accepts markdown strings, content node lists, or `Folio.Document` structs.
+  Styles passed in `opts` override matching styles already stored in a document.
 
       {:ok, pdf} = Folio.to_pdf("# Hello")
       {:ok, pdf} = Folio.to_pdf(doc)
@@ -171,7 +172,7 @@ defmodule Folio do
        ) do
     content = Folio.Show.apply(content)
     opts_styles = Keyword.get(opts, :styles, [])
-    {:ok, {content, opts_styles ++ doc_styles, doc_files}}
+    {:ok, {content, doc_styles ++ opts_styles, doc_files}}
   end
 
   defp normalize_source(markdown, opts) when is_binary(markdown) do
@@ -201,6 +202,8 @@ defmodule Folio do
   end
 
   defp format_nif_error(msg) do
+    msg = unwrap_raised_term(msg)
+
     case Regex.run(~r/Could not decode field :(\w+) on %Ex(\w+)\{\}/, msg) do
       [_, field, type] ->
         "invalid value for #{type}.#{field} — check that the field type matches the DSL function signature"
@@ -209,4 +212,13 @@ defmodule Folio do
         msg
     end
   end
+
+  defp unwrap_raised_term("Erlang error: " <> inspected) do
+    case Code.string_to_quoted(inspected) do
+      {:ok, message} when is_binary(message) -> message
+      _ -> "Erlang error: " <> inspected
+    end
+  end
+
+  defp unwrap_raised_term(message), do: message
 end

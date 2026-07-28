@@ -826,6 +826,15 @@ defmodule Folio.DslTest do
 
       assert pdf_size_above?(pdf, 100)
     end
+
+    test "polygon with numeric coordinate pairs" do
+      assert {:ok, pdf} =
+               Folio.to_pdf([
+                 polygon([{0, 0}, {100, 0}, {50, 80}], fill: "blue")
+               ])
+
+      assert pdf_size_above?(pdf, 100)
+    end
   end
 
   describe "enum start numbering" do

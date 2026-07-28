@@ -176,8 +176,14 @@ defmodule Folio.DSL do
       highlight("custom color", fill: "#ffff00")
   """
   @spec highlight(Content.t() | [Content.t()] | String.t(), keyword()) :: Content.Highlight.t()
-  def highlight(content, opts \\ []) when is_list(opts) do
+  def highlight(content, opts \\ [])
+
+  def highlight(content, opts) when is_list(opts) do
     %Content.Highlight{body: Content.to_content(content), fill: Keyword.get(opts, :fill)}
+  end
+
+  def highlight(_content, opts) do
+    raise ArgumentError, "highlight/2 expects a keyword list, got: #{inspect(opts)}"
   end
 
   @doc """
@@ -719,19 +725,19 @@ defmodule Folio.DSL do
   end
 
   @doc """
-  Polygon from coordinate list. Options: `:fill`, `:stroke`.
+  Polygon from numeric coordinate pairs or `"x,y"` sizing strings. Options: `:fill`, `:stroke`.
 
   ## Examples
 
       use Folio
       polygon([{0, 0}, {50, 0}, {25, 40}], fill: "#aaaaff", stroke: "1pt")
   """
-  @spec polygon([{number(), number()}], keyword()) :: Content.Polygon.t()
+  @spec polygon([{number(), number()} | String.t()], keyword()) :: Content.Polygon.t()
   def polygon(vertices, opts \\ [])
 
   def polygon(vertices, opts) when is_list(vertices) and is_list(opts) do
     %Content.Polygon{
-      vertices: Enum.map(vertices, &to_string/1),
+      vertices: Enum.map(vertices, &normalize_polygon_vertex!/1),
       fill: Keyword.get(opts, :fill),
       stroke: Keyword.get(opts, :stroke)
     }
@@ -1185,6 +1191,14 @@ defmodule Folio.DSL do
   end
 
   # ── Helpers ──
+
+  defp normalize_polygon_vertex!({x, y}) when is_number(x) and is_number(y), do: "#{x},#{y}"
+  defp normalize_polygon_vertex!(vertex) when is_binary(vertex), do: vertex
+
+  defp normalize_polygon_vertex!(vertex) do
+    raise ArgumentError,
+          "polygon/2 vertices must be numeric coordinate pairs or sizing strings, got: #{inspect(vertex)}"
+  end
 
   defp then_if_some(nil, _fun), do: nil
   defp then_if_some(val, fun), do: fun.(val)

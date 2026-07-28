@@ -36,29 +36,33 @@ use typst::syntax::{Span, Spanned};
 
 // ── Value parsing ────────────────────────────────────────────────────────────
 
-fn parse_abs(s: &str) -> Option<Abs> {
-    let s = s.trim();
-    if let Some(r) = s.strip_suffix("pt") { r.trim().parse::<f64>().ok().map(Abs::pt) }
-    else if let Some(r) = s.strip_suffix("cm") { r.trim().parse::<f64>().ok().map(Abs::cm) }
-    else if let Some(r) = s.strip_suffix("mm") { r.trim().parse::<f64>().ok().map(Abs::mm) }
-    else if let Some(r) = s.strip_suffix("in") { r.trim().parse::<f64>().ok().map(Abs::inches) }
-    else { s.parse::<f64>().ok().map(Abs::pt) }
+fn parse_number(s: &str) -> Option<f64> {
+    s.trim().parse::<f64>().ok().filter(|number| number.is_finite())
 }
 
-fn parse_length(s: &str) -> Option<Length> {
+fn parse_abs(s: &str) -> Option<Abs> {
+    let s = s.trim();
+    if let Some(r) = s.strip_suffix("pt") { parse_number(r).map(Abs::pt) }
+    else if let Some(r) = s.strip_suffix("cm") { parse_number(r).map(Abs::cm) }
+    else if let Some(r) = s.strip_suffix("mm") { parse_number(r).map(Abs::mm) }
+    else if let Some(r) = s.strip_suffix("in") { parse_number(r).map(Abs::inches) }
+    else { parse_number(s).map(Abs::pt) }
+}
+
+pub(crate) fn parse_length(s: &str) -> Option<Length> {
     let s = s.trim();
     if let Some(r) = s.strip_suffix("em") {
-        let em: f64 = r.trim().parse().ok()?;
+        let em = parse_number(r)?;
         Some(Length { abs: Abs::zero(), em: Em::new(em) })
     } else {
         parse_abs(s).map(|abs| Length { abs, em: Em::zero() })
     }
 }
 
-fn parse_rel(s: &str) -> Option<Rel<Length>> {
+pub(crate) fn parse_rel(s: &str) -> Option<Rel<Length>> {
     let s = s.trim();
     if s.ends_with('%') {
-        let pct: f64 = s.trim_end_matches('%').trim().parse().ok()?;
+        let pct = parse_number(s.trim_end_matches('%'))?;
         Some(Ratio::new(pct / 100.0).into())
     } else if s.ends_with("em") {
         parse_length(s).map(Into::into)
@@ -67,15 +71,14 @@ fn parse_rel(s: &str) -> Option<Rel<Length>> {
     }
 }
 
-fn parse_sizing(s: &str) -> Sizing {
+pub(crate) fn parse_sizing(s: &str) -> Option<Sizing> {
     let s = s.trim();
     if s == "auto" {
-        Sizing::Auto
+        Some(Sizing::Auto)
     } else if s.ends_with("fr") {
-        let val: f64 = s.trim_end_matches("fr").trim().parse().unwrap_or(1.0);
-        Sizing::Fr(Fr::new(val))
+        parse_number(s.trim_end_matches("fr")).map(|value| Sizing::Fr(Fr::new(value)))
     } else {
-        Sizing::Rel(parse_rel(s).unwrap_or(Rel::one()))
+        parse_rel(s).map(Sizing::Rel)
     }
 }
 
@@ -89,11 +92,11 @@ fn smart_rel(opt: Option<&str>) -> Smart<Rel<Length>> {
 fn smart_sizing(opt: Option<&str>) -> Sizing {
     match opt {
         None | Some("auto") => Sizing::Auto,
-        Some(v) => parse_sizing(v),
+        Some(v) => parse_sizing(v).unwrap_or(Sizing::Auto),
     }
 }
 
-pub fn parse_color(s: &str) -> Option<typst::visualize::Color> {
+pub(crate) fn parse_color(s: &str) -> Option<typst::visualize::Color> {
     use std::str::FromStr;
     let s = s.trim();
 
@@ -101,7 +104,7 @@ pub fn parse_color(s: &str) -> Option<typst::visualize::Color> {
     if s.starts_with("rgb(") && s.ends_with(')') {
         let inner = &s[4..s.len()-1];
         let p: Vec<&str> = inner.split(',').map(|x| x.trim()).collect();
-        if p.len() >= 3 {
+        if p.len() == 3 {
             Some(typst::visualize::Color::from_u8(
                 p[0].parse().ok()?, p[1].parse().ok()?, p[2].parse().ok()?, 0xFF))
         } else { None }
@@ -141,45 +144,56 @@ fn named_color(s: &str) -> Option<typst::visualize::Color> {
 fn parse_paint(s: &str) -> Option<Paint> { parse_color(s).map(Paint::Solid) }
 fn opt_paint(opt: Option<&str>) -> Option<Paint> { opt.and_then(parse_paint) }
 
-fn parse_dir(s: &str) -> Dir {
-    match s { "ltr" => Dir::LTR, "rtl" => Dir::RTL, "btt" => Dir::BTT, _ => Dir::TTB }
+pub(crate) fn parse_dir(s: &str) -> Option<Dir> {
+    match s { "ltr" => Some(Dir::LTR), "rtl" => Some(Dir::RTL), "btt" => Some(Dir::BTT),
+        "ttb" => Some(Dir::TTB), _ => None }
 }
 
-fn parse_align(s: &str) -> Alignment {
-    match s { "left" | "start" => Alignment::START, "center" => Alignment::CENTER,
-        "right" | "end" => Alignment::END, "top" => Alignment::TOP,
-        "bottom" => Alignment::BOTTOM, _ => Alignment::START }
-}
-
-fn parse_angle(s: &str) -> Option<Angle> {
-    let s = s.trim();
-    if let Some(r) = s.strip_suffix("deg") { r.trim().parse::<f64>().ok().map(Angle::deg) }
-    else if let Some(r) = s.strip_suffix("rad") { r.trim().parse::<f64>().ok().map(Angle::rad) }
-    else { s.parse::<f64>().ok().map(Angle::deg) }
-}
-
-fn parse_font_weight(s: &str) -> FontWeight {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "thin" => FontWeight::THIN,
-        "extralight" => FontWeight::EXTRALIGHT,
-        "light" => FontWeight::LIGHT,
-        "regular" => FontWeight::REGULAR,
-        "medium" => FontWeight::MEDIUM,
-        "semibold" => FontWeight::SEMIBOLD,
-        "bold" => FontWeight::BOLD,
-        "extrabold" => FontWeight::EXTRABOLD,
-        "black" => FontWeight::BLACK,
-        other => {
-            if let Ok(n) = other.parse::<u16>() {
-                FontWeight::from_number(n)
-            } else {
-                FontWeight::REGULAR
-            }
+pub(crate) fn parse_align(s: &str) -> Option<Alignment> {
+    fn part(s: &str) -> Option<Alignment> {
+        match s.trim() {
+            "left" => Some(Alignment::LEFT), "start" => Some(Alignment::START),
+            "center" => Some(Alignment::CENTER), "right" => Some(Alignment::RIGHT),
+            "end" => Some(Alignment::END), "top" => Some(Alignment::TOP),
+            "horizon" => Some(Alignment::HORIZON), "bottom" => Some(Alignment::BOTTOM),
+            _ => None,
         }
+    }
+
+    let mut parts = s.split('+');
+    let first = part(parts.next()?)?;
+    match (parts.next(), parts.next()) {
+        (None, None) => Some(first),
+        (Some(second), None) => (first + part(second)?).ok(),
+        _ => None,
     }
 }
 
-fn parse_stroke(s: &str) -> Option<Stroke> {
+pub(crate) fn parse_angle(s: &str) -> Option<Angle> {
+    let s = s.trim();
+    if let Some(r) = s.strip_suffix("deg") { parse_number(r).map(Angle::deg) }
+    else if let Some(r) = s.strip_suffix("rad") { parse_number(r).map(Angle::rad) }
+    else { parse_number(s).map(Angle::deg) }
+}
+
+pub(crate) fn parse_font_weight(s: &str) -> Option<FontWeight> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "thin" => Some(FontWeight::THIN),
+        "extralight" => Some(FontWeight::EXTRALIGHT),
+        "light" => Some(FontWeight::LIGHT),
+        "regular" => Some(FontWeight::REGULAR),
+        "medium" => Some(FontWeight::MEDIUM),
+        "semibold" => Some(FontWeight::SEMIBOLD),
+        "bold" => Some(FontWeight::BOLD),
+        "extrabold" => Some(FontWeight::EXTRABOLD),
+        "black" => Some(FontWeight::BLACK),
+        other => other.parse::<u16>().ok()
+            .filter(|weight| (100..=900).contains(weight))
+            .map(FontWeight::from_number),
+    }
+}
+
+pub(crate) fn parse_stroke(s: &str) -> Option<Stroke> {
     let s = s.trim();
     if s == "none" {
         return Some(Stroke { thickness: Smart::Custom(Abs::zero().into()), ..Default::default() });
@@ -201,7 +215,7 @@ fn parse_stroke(s: &str) -> Option<Stroke> {
     None
 }
 
-fn parse_axes(s: &str) -> Option<Axes<Rel<Length>>> {
+pub(crate) fn parse_axes(s: &str) -> Option<Axes<Rel<Length>>> {
     let p: Vec<&str> = s.split(',').collect();
     if p.len() == 2 { Some(Axes::new(parse_rel(p[0])?, parse_rel(p[1])?)) } else { None }
 }
@@ -311,7 +325,7 @@ fn convert_node(engine: &mut Engine, node: &ExContent) -> Content {
             if let Some(weight_str) = &t.weight {
                 content = content.styled(typst::foundations::Property::new(
                     TextElem::weight,
-                    parse_font_weight(weight_str),
+                    parse_font_weight(weight_str).unwrap_or(FontWeight::REGULAR),
                 ));
             }
             if let Some(fill_str) = &t.fill {
@@ -525,7 +539,7 @@ fn convert_node(engine: &mut Engine, node: &ExContent) -> Content {
         ExContent::Linebreak(_) => LinebreakElem::shared().clone(),
 
         ExContent::Align(a) => AlignElem::new(cc(engine, &a.body))
-            .with_alignment(parse_align(&a.alignment)).pack(),
+            .with_alignment(parse_align(&a.alignment).unwrap_or(Alignment::START)).pack(),
 
         ExContent::Block(b) => {
             let mut e = BlockElem::new()
@@ -567,7 +581,7 @@ fn convert_node(engine: &mut Engine, node: &ExContent) -> Content {
         ExContent::Repeat(r) => RepeatElem::new(cc(engine, &r.body)).pack(),
 
         ExContent::Place(p) => {
-            let al = p.alignment.as_deref().map(parse_align)
+            let al = p.alignment.as_deref().and_then(parse_align)
                 .map(Smart::Custom).unwrap_or(Smart::Auto);
             PlaceElem::new(cc(engine, &p.body)).with_alignment(al)
                 .with_float(p.float.unwrap_or(false)).pack()
@@ -598,7 +612,7 @@ fn convert_node(engine: &mut Engine, node: &ExContent) -> Content {
         ExContent::Stack(st) => {
             let ch: Vec<StackChild> = st.children.iter()
                 .map(|c| StackChild::Block(convert_node(engine, c))).collect();
-            let mut e = StackElem::new(ch).with_dir(parse_dir(&st.dir));
+            let mut e = StackElem::new(ch).with_dir(parse_dir(&st.dir).unwrap_or(Dir::TTB));
             if let Some(sp) = st.spacing.as_deref().and_then(parse_rel) {
                 e = e.with_spacing(Some(Spacing::Rel(sp)));
             }
@@ -781,7 +795,8 @@ fn convert_node(engine: &mut Engine, node: &ExContent) -> Content {
 
 fn convert_table(engine: &mut Engine, tbl: &crate::types::ExTable) -> Content {
     let cols = if let Some(specs) = &tbl.columns {
-        let track: smallvec::SmallVec<[Sizing; 4]> = specs.iter().map(|s| parse_sizing(s)).collect();
+        let track: smallvec::SmallVec<[Sizing; 4]> = specs.iter()
+            .map(|s| parse_sizing(s).unwrap_or(Sizing::Auto)).collect();
         TrackSizings(track)
     } else {
         let ncols = count_columns(tbl);
@@ -793,7 +808,9 @@ fn convert_table(engine: &mut Engine, tbl: &crate::types::ExTable) -> Content {
         let mut cell = TableCell::new(cc(engine, &tc.body));
         if let Some(rs) = tc.rowspan { cell = cell.with_rowspan(NonZeroUsize::new(rs as _).unwrap_or(NonZeroUsize::MIN)); }
         if let Some(cs) = tc.colspan { cell = cell.with_colspan(NonZeroUsize::new(cs as _).unwrap_or(NonZeroUsize::MIN)); }
-        if let Some(al) = &tc.align { cell = cell.with_align(Smart::Custom(parse_align(al))); }
+        if let Some(al) = &tc.align {
+            cell = cell.with_align(Smart::Custom(parse_align(al).unwrap_or(Alignment::START)));
+        }
         if let Some(f) = &tc.fill {
             if let Some(p) = parse_paint(f) {
                 cell = cell.with_fill(Smart::Custom(Some(p)));
@@ -843,7 +860,9 @@ fn convert_table(engine: &mut Engine, tbl: &crate::types::ExTable) -> Content {
         }
     }
     if let Some(al) = &tbl.align {
-        elem = elem.with_align(Celled::Value(Smart::Custom(parse_align(al))));
+        elem = elem.with_align(Celled::Value(Smart::Custom(
+            parse_align(al).unwrap_or(Alignment::START),
+        )));
     }
     if let Some(st) = &tbl.stroke {
         if let Some(s) = parse_stroke(st) {
@@ -896,12 +915,14 @@ fn convert_grid(engine: &mut Engine, grid: &crate::types::ExGrid) -> Content {
     let mut elem = GridElem::new(children);
 
     if let Some(cols) = &grid.columns {
-        let track: smallvec::SmallVec<[Sizing; 4]> = cols.iter().map(|s| parse_sizing(s)).collect();
+        let track: smallvec::SmallVec<[Sizing; 4]> = cols.iter()
+            .map(|s| parse_sizing(s).unwrap_or(Sizing::Auto)).collect();
         elem = elem.with_columns(TrackSizings(track));
     }
 
     if let Some(rows) = &grid.rows {
-        let track: smallvec::SmallVec<[Sizing; 4]> = rows.iter().map(|s| parse_sizing(s)).collect();
+        let track: smallvec::SmallVec<[Sizing; 4]> = rows.iter()
+            .map(|s| parse_sizing(s).unwrap_or(Sizing::Auto)).collect();
         elem = elem.with_rows(TrackSizings(track));
     }
 
@@ -942,7 +963,9 @@ fn convert_grid_cell_raw(engine: &mut Engine, gc: &crate::types::ExGridCell) -> 
         cell = cell.with_rowspan(NonZeroUsize::new(rs as _).unwrap_or(NonZeroUsize::MIN));
     }
     if let Some(al) = &gc.align {
-        cell = cell.with_align(Smart::Custom(parse_align(al)));
+        cell = cell.with_align(Smart::Custom(
+            parse_align(al).unwrap_or(Alignment::START),
+        ));
     }
     if let Some(f) = &gc.fill {
         if let Some(p) = parse_paint(f) {

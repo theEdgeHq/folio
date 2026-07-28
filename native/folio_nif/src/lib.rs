@@ -1,6 +1,7 @@
 mod convert;
 mod mdex_bridge;
 mod types;
+mod validate;
 mod world;
 
 use std::panic::AssertUnwindSafe;
@@ -66,6 +67,8 @@ fn compile_pdf_impl<'a>(
     files: std::collections::HashMap<String, rustler::Binary<'a>>,
 ) -> NifResult<rustler::Binary<'a>> {
     catch_nif("compile_pdf", || {
+        validate::document(&content, &styles)
+            .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)))?;
         let session_files = decode_file_map(files);
         let world = FolioWorld::new(styles, session_files);
         let result = world
@@ -82,6 +85,8 @@ fn compile_svg_impl<'a>(
     files: std::collections::HashMap<String, rustler::Binary<'a>>,
 ) -> NifResult<Vec<String>> {
     catch_nif("compile_svg", || {
+        validate::document(&content, &styles)
+            .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)))?;
         let session_files = decode_file_map(files);
         let world = FolioWorld::new(styles, session_files);
         world
@@ -101,6 +106,8 @@ fn compile_png_impl<'a>(
     dpi: f64,
 ) -> NifResult<Vec<rustler::Binary<'a>>> {
     catch_nif("compile_png", || {
+        validate::document(&content, &styles)
+            .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)))?;
         let session_files = decode_file_map(files);
         let world = FolioWorld::new(styles, session_files);
         let result = world
