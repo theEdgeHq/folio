@@ -179,18 +179,19 @@ impl FolioWorld {
                 Some(doc) => Output::introspector(doc),
                 None => &empty,
             };
-            let mut iter_sink = Sink::new();
-            let mut engine = Engine {
-                routines: &typst::ROUTINES,
-                world: Track::track(self),
-                introspector: typst::utils::Protected::new(introspector.track_with(&constraint)),
-                traced: traced.track(),
-                sink: iter_sink.track_mut(),
-                route: Route::root(),
+            let doc = {
+                let mut iter_sink = Sink::new();
+                let mut engine = Engine {
+                    routines: &typst::ROUTINES,
+                    world: Track::track(self),
+                    introspector: typst::utils::Protected::new(introspector.track_with(&constraint)),
+                    traced: traced.track(),
+                    sink: iter_sink.track_mut(),
+                    route: Route::root(),
+                };
+                layout_document(&mut engine, &body, styles)
+                    .map_err(|e| format!("Layout error: {:?}", e))?
             };
-            let doc = layout_document(&mut engine, &body, styles)
-                .map_err(|e| format!("Layout error: {:?}", e))?;
-            drop(engine);
             if constraint.validate(Output::introspector(&doc)) {
                 return Ok(doc);
             }
@@ -286,7 +287,7 @@ fn apply_styles(styles: &mut typst::foundations::Styles, user_styles: &[ExStyle]
             ExStyle::ParIndent(pi) => {
                 let fli = typst::model::FirstLineIndent::new(
                     Some(Abs::pt(pi.indent).into()),
-                    pi.all.map(|a| if a { Some(true) } else { None }).flatten(),
+                    pi.all.and_then(|a| if a { Some(true) } else { None }),
                 );
                 styles.set(typst::model::ParElem::first_line_indent, fli);
             }

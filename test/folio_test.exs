@@ -150,6 +150,38 @@ defmodule FolioTest do
       # Body content should be the same, but page numbering should differ
       assert page1 != page2
     end
+
+    test "resolves a reference to a labelled heading" do
+      import Folio.DSL
+
+      styles = [Folio.Styles.heading_numbering("1.")]
+
+      assert {:ok, [_heading_page, reference_page]} =
+               Folio.to_svg(
+                 [heading(1, "Introduction"), label("intro"), pagebreak(), ref("intro")],
+                 styles: styles
+               )
+
+      assert {:ok, [_heading_page, empty_page]} =
+               Folio.to_svg(
+                 [heading(1, "Introduction"), label("intro"), pagebreak(), text("")],
+                 styles: styles
+               )
+
+      assert reference_page != empty_page
+    end
+
+    test "populates an outline from document headings" do
+      import Folio.DSL
+
+      assert {:ok, [populated_outline | _]} =
+               Folio.to_svg([outline(title: ""), pagebreak(), heading(1, "Introduction")])
+
+      assert {:ok, [empty_outline | _]} =
+               Folio.to_svg([outline(title: ""), pagebreak(), text("Introduction")])
+
+      assert populated_outline != empty_outline
+    end
   end
 
   describe "to_png/2" do
