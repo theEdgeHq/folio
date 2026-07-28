@@ -2,8 +2,8 @@ defmodule Folio.Content do
   @moduledoc """
   Typed content nodes that map 1:1 to Typst elements.
 
-  Every struct has matching fields in `native/folio_nif/src/types.rs`.
-  The Rust NifStruct `#[module = "Folio.Content.*"]` must match exactly.
+  RustQ derives the native Rust structs from these public structs and typespecs.
+  Run `mix rustq.gen` after changing a native boundary type.
   """
 
   defmodule Text do
@@ -487,7 +487,7 @@ defmodule Folio.Content do
     defstruct [:columns, :rows, :gutter, :column_gutter, :row_gutter, :children]
 
     @type t :: %__MODULE__{
-            columns: [String.t()] | pos_integer() | nil,
+            columns: [String.t()] | nil,
             rows: [String.t()] | nil,
             gutter: String.t() | nil,
             column_gutter: String.t() | nil,

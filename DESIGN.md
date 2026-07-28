@@ -127,26 +127,28 @@ Folio.Document.configure(page: [paper: :a4, margin: 2 |> cm], font: "Helvetica")
 
 ```
 folio/
+├── codegen/folio/               # RustQ boundary generators
 ├── lib/
-│   ├── folio.ex              # API + use macro
-│   ├── folio/
-│   │   ├── sigil.ex            # ~MD sigil
-│   │   ├── content.ex          # Content node structs (30+ element types)
-│   │   ├── document.ex         # Document struct (content + styles)
-│   │   ├── dsl.ex              # Builder functions (heading, figure, table...)
-│   │   ├── styles.ex           # SetRule, ShowSetRule, ShowRule structs
-│   │   └── values.ex           # Unit types (pt, cm, mm, em, fr, pct)
-├── native/
-│   └── folio_nif/
-│       ├── Cargo.toml
-│       └── src/
-│           ├── lib.rs           # NIF: compile(), parse_markdown()
-│           ├── types.rs         # ExContent, ExValue, ExStyleRule (NifStruct)
-│           ├── convert.rs       # ExContent → typst Content
-│           ├── mdex_bridge.rs   # comrak NodeValue → ExContent → typst Content
-│           ├── styles.rs        # ExStyleRule → typst Styles
-│           ├── math.rs          # Math string → Typst math Content
-│           └── world.rs         # World impl (fonts via typst-assets)
+│   ├── folio.ex                 # Public API + use macro
+│   └── folio/
+│       ├── content.ex           # Public content structs and boundary typespecs
+│       ├── document.ex          # Document struct (content + styles)
+│       ├── dsl.ex               # Builder functions
+│       ├── native.ex            # RustlerPrecompiled loader and public specs
+│       ├── native/generated_stubs.ex
+│       ├── show.ex              # Elixir-side show-rule expansion
+│       ├── sigil.ex             # ~MD sigil
+│       └── styles.ex            # Public style structs and boundary typespecs
+├── native/folio_nif/
+│   ├── Cargo.toml
+│   └── src/
+│       ├── lib.rs               # Handwritten NIF implementations
+│       ├── types.rs             # Includes RustQ-generated boundary types
+│       ├── generated_*.rs       # Checked RustQ output
+│       ├── convert.rs           # ExContent → Typst Content
+│       ├── mdex_bridge.rs       # comrak NodeValue → ExContent
+│       └── world.rs             # Typst World, layout, and export
+├── rustq.exs                    # Checked-generation manifest
 └── test/
 ```
 
@@ -154,7 +156,7 @@ folio/
 
 1. **No Typst source strings** — Content trees built directly in Rust
 2. **comrak for Markdown** — same parser as MDEx, proven and fast
-3. **Rustler NifStruct** — Elixir structs map 1:1 to Rust types across NIF
+3. **RustQ-generated Rustler boundary** — public Elixir structs and typespecs generate the native structs and enums
 4. **DSL functions return structs** — not strings, not AST — plain data
 5. **Math is parsed by Typst** — math strings go through `typst_syntax::parse_math()`
 6. **Style rules as data** — not macros, not code — plain keyword lists/maps

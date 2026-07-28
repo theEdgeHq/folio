@@ -32,7 +32,7 @@ fn compile_png<'a>(
     compile_png_impl(env, content, styles, files, dpi)
 }
 #[rustler::nif]
-fn register_file<'a>(path: String, data: rustler::Binary<'a>) -> rustler::Atom {
+fn register_file(path: String, data: rustler::Binary) -> rustler::Atom {
     register_file_impl(path, data)
 }
 #[rustler::nif]
