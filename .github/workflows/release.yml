@@ -18,12 +18,14 @@ jobs:
       project-name: folio_nif
       project-dir: native/folio_nif
       checkout-submodules: recursive
+      apt-packages: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+      extra-env: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
       checksum-module: Folio.Native
       checksum-file: checksum-Elixir.Folio.Native.exs
       checksum-prepare-command: FOLIO_BUILD=1 mix compile
       jobs: >-
         [
-          {"target":"aarch64-unknown-linux-gnu","os":"ubuntu-22.04","use-cross":true},
+          {"target":"aarch64-unknown-linux-gnu","os":"ubuntu-22.04","use-cross":false},
           {"target":"aarch64-apple-darwin","os":"macos-14"},
           {"target":"x86_64-apple-darwin","os":"macos-15"},
           {"target":"x86_64-unknown-linux-gnu","os":"ubuntu-22.04"}
