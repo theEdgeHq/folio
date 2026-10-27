@@ -5,6 +5,17 @@ Print-quality PDF/SVG/PNG from Markdown + Elixir, powered by [Typst](https://typ
 [![Hex.pm](https://img.shields.io/hexpm/v/folio.svg)](https://hex.pm/packages/folio)
 [![Docs](https://img.shields.io/badge/docs-hex.pm-blue)](https://hexdocs.pm/folio)
 
+## Electra fork
+
+This fork clears Typst's shared compilation cache after each document, including compilation errors.
+Caching remains active during compilation. PDF, SVG, and PNG use the same cleanup rule.
+Concurrent compilations share the cache, so cleanup can reduce reuse in another active compilation.
+A native panic still requires a process restart, as described in the native error contract.
+
+The fork builds its native library from source. Install Rust 1.89 or newer and a C compiler.
+It does not load upstream prebuilt binaries, which do not contain this fix.
+The cache policy requires no configuration. It is not a hard limit on peak memory within one compilation.
+
 ## Why Folio
 
 ### Data-Driven Documents at Runtime

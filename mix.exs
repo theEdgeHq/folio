@@ -34,7 +34,7 @@ defmodule Folio.MixProject do
 
   defp deps do
     [
-      {:rustler, "~> 0.37", optional: true},
+      {:rustler, "~> 0.37"},
       {:rustler_precompiled, "~> 0.8"},
       {:rustq, "~> 1.0.0-rc.6", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},

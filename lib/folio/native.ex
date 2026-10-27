@@ -5,18 +5,12 @@ defmodule Folio.Native do
   alias Folio.Styles
 
   version = Mix.Project.config()[:version]
-  source_root = Path.expand("../..", __DIR__)
-
-  local_test_build =
-    Mix.env() in [:dev, :test] and
-      File.exists?(Path.join(source_root, "test/test_helper.exs")) and
-      File.dir?(Path.join(source_root, ".git"))
 
   use RustlerPrecompiled,
     otp_app: :folio,
     crate: :folio_nif,
     base_url: "https://github.com/dannote/folio/releases/download/v#{version}",
-    force_build: local_test_build or System.get_env("FOLIO_BUILD") in ["1", "true"],
+    force_build: true,
     targets: ~w(
       aarch64-apple-darwin
       aarch64-unknown-linux-gnu

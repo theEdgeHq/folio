@@ -29,3 +29,6 @@ fontdb = "0.23"
 [features]
 default = ["nif_version_2_15"]
 nif_version_2_15 = ["rustler/nif_version_2_15"]
+
+[dev-dependencies]
+comemo = "=0.5.1"

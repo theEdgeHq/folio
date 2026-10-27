@@ -44,6 +44,16 @@ where
     }
 }
 
+struct DocumentCache;
+
+impl Drop for DocumentCache {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            typst::comemo::evict(0);
+        }
+    }
+}
+
 fn parse_markdown_impl(markdown: String) -> NifResult<Vec<ExContent>> {
     catch_nif("parse_markdown", || {
         let arena = typed_arena::Arena::new();
@@ -69,6 +79,7 @@ fn compile_pdf_impl<'a>(
     catch_nif("compile_pdf", || {
         validate::document(&content, &styles)
             .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)))?;
+        let _cache = DocumentCache;
         let session_files = decode_file_map(files);
         let world = FolioWorld::new(styles, session_files);
         let result = world
@@ -87,6 +98,7 @@ fn compile_svg_impl<'a>(
     catch_nif("compile_svg", || {
         validate::document(&content, &styles)
             .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)))?;
+        let _cache = DocumentCache;
         let session_files = decode_file_map(files);
         let world = FolioWorld::new(styles, session_files);
         world
@@ -108,6 +120,7 @@ fn compile_png_impl<'a>(
     catch_nif("compile_png", || {
         validate::document(&content, &styles)
             .map_err(|msg| rustler::Error::RaiseTerm(Box::new(msg)))?;
+        let _cache = DocumentCache;
         let session_files = decode_file_map(files);
         let world = FolioWorld::new(styles, session_files);
         let result = world
@@ -145,3 +158,42 @@ fn alloc_binary<'a>(env: Env<'a>, bytes: &[u8]) -> NifResult<rustler::Binary<'a>
 }
 
 rustler::init!("Elixir.Folio.Native");
+
+#[cfg(test)]
+mod tests {
+    use super::DocumentCache;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    #[typst::comemo::memoize]
+    fn cached(value: usize) -> usize {
+        CALLS.fetch_add(1, Ordering::SeqCst);
+        value
+    }
+
+    fn document(fail: bool) -> Result<(), ()> {
+        let _cache = DocumentCache;
+        cached(1);
+        if fail {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn clears_cached_results_after_success_and_error() {
+        typst::comemo::evict(0);
+        cached(1);
+        cached(1);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+        assert_eq!(document(false), Ok(()));
+        cached(1);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 2);
+        assert_eq!(document(true), Err(()));
+        cached(1);
+        assert_eq!(CALLS.load(Ordering::SeqCst), 3);
+        typst::comemo::evict(0);
+    }
+}
